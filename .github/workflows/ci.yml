@@ -1,0 +1,49 @@
+
+name: CI - Build, Test, and PDF Log
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Compose up (web + selenium) and run selenium tests
+        run: |
+          set -e
+          mkdir -p artifacts
+          echo "== Building images ==" | tee -a pipeline.log
+          docker compose build 2>&1 | tee -a pipeline.log
+          echo "== Starting services and running Selenium tests ==" | tee -a pipeline.log
+          docker compose up --abort-on-container-exit --exit-code-from tests 2>&1 | tee -a pipeline.log
+
+      - name: Run unit tests (outside containers) for extra evidence
+        run: |
+          echo "== Python unit tests ==" | tee -a pipeline.log
+          python -m pip install --upgrade pip 2>&1 | tee -a pipeline.log
+          pip install -r requirements.txt 2>&1 | tee -a pipeline.log
+          pytest -q tests/unit 2>&1 | tee -a pipeline.log
+
+      - name: Make PDF from pipeline log
+        run: |
+          python tools/make_pdf.py pipeline.log pipeline_log.pdf
+
+      - name: Upload artifacts (PDF + screenshot)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-artifacts
+          path: |
+            pipeline.log
+            pipeline_log.pdf
+            artifacts/homepage.png
+          if-no-files-found: warn
