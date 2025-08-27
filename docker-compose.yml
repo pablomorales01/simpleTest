@@ -1,0 +1,33 @@
+
+services:
+  web:
+    build: .
+    image: simple-ci-app:web
+    ports:
+      - "8000:8000"
+
+  selenium:
+    image: selenium/standalone-chrome:4.23.0-20240730
+    shm_size: 2gb
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4444/status"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.tests
+    environment:
+      SELENIUM_REMOTE_URL: http://selenium:4444/wd/hub
+      BASE_URL: http://web:8000
+      ARTIFACT_SCREENSHOT: /artifacts/homepage.png
+    volumes:
+      - ./artifacts:/artifacts
+    depends_on:
+      web:
+        condition: service_started
+      selenium:
+        condition: service_healthy
+    command: ["pytest", "-q", "tests/selenium"]
